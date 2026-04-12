@@ -467,6 +467,23 @@ async def stream_kiro_to_anthropic(
         # Determine stop reason
         stop_reason = "tool_use" if tool_blocks else "end_turn"
         
+        # If no content was delivered and no tool blocks, inject NO_REPLY
+        if not full_content.strip() and not tool_blocks:
+            yield format_sse_event("content_block_start", {
+                "type": "content_block_start",
+                "index": current_block_index,
+                "content_block": {"type": "text", "text": ""}
+            })
+            yield format_sse_event("content_block_delta", {
+                "type": "content_block_delta",
+                "index": current_block_index,
+                "delta": {"type": "text_delta", "text": "NO_REPLY"}
+            })
+            yield format_sse_event("content_block_stop", {
+                "type": "content_block_stop",
+                "index": current_block_index
+            })
+        
         # Send message_delta with stop_reason and usage
         yield format_sse_event("message_delta", {
             "type": "message_delta",
