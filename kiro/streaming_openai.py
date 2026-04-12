@@ -309,6 +309,17 @@ async def stream_kiro_to_openai_internal(
                     f"content={content_was_truncated}. Will be handled when client sends next request."
                 )
         
+        # If no content was delivered and no tool calls, inject NO_REPLY
+        if not full_content.strip() and not all_tool_calls:
+            no_reply_chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": created_time,
+                "model": model,
+                "choices": [{"index": 0, "delta": {"content": "NO_REPLY"}, "finish_reason": None}]
+            }
+            yield f"data: {json.dumps(no_reply_chunk, ensure_ascii=False)}\n\n"
+        
         # Final chunk with usage
         final_chunk = {
             "id": completion_id,
