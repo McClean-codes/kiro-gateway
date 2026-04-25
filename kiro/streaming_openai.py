@@ -197,7 +197,8 @@ async def stream_kiro_to_openai_internal(
                 # ==============================================================================
                 
                 # INTERCEPT web_search tool calls (Path B - MCP emulation)
-                if tool_name == "web_search":
+                from kiro.config import WEB_SEARCH_ENABLED
+                if WEB_SEARCH_ENABLED and tool_name == "web_search":
                     from kiro.mcp_tools import call_kiro_mcp_api, generate_search_summary
                     
                     logger.info("Intercepted web_search tool call (Path B - MCP emulation)")
