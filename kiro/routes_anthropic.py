@@ -145,6 +145,16 @@ async def messages(
     """
     logger.info(f"Request to /v1/messages (model={request_data.model}, stream={request_data.stream})")
     
+    # Log all incoming headers for debugging
+    logger.debug(f"[INCOMING HEADERS] {dict(request.headers)}")
+    
+    # Log system prompt details for debugging
+    if request_data.system:
+        system_text = request_data.system if isinstance(request_data.system, str) else str(request_data.system)
+        logger.info(f"[SYSTEM PROMPT] Length: {len(system_text)} chars")
+        logger.info(f"[SYSTEM PROMPT HEAD] {system_text[:500]}")
+        logger.info(f"[SYSTEM PROMPT TAIL] {system_text[-500:]}")
+    
     if anthropic_version:
         logger.debug(f"Anthropic-Version header: {anthropic_version}")
     
