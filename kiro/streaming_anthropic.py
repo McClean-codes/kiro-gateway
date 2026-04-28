@@ -645,6 +645,11 @@ async def stream_kiro_to_anthropic(
         
         # If no content was delivered and no tool blocks, inject NO_REPLY
         if not full_content.strip() and not tool_blocks:
+            logger.warning(
+                f"[EMPTY_RESPONSE] Model returned no content and no tool blocks. "
+                f"raw_content_length={len(full_content)}, thinking_length={len(full_thinking_content)}, "
+                f"input_tokens={input_tokens}, output_tokens={output_tokens}"
+            )
             yield format_sse_event("content_block_start", {
                 "type": "content_block_start",
                 "index": current_block_index,

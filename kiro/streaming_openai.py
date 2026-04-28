@@ -391,6 +391,11 @@ async def stream_kiro_to_openai_internal(
         
         # If no content was delivered and no tool calls, inject NO_REPLY
         if not full_content.strip() and not all_tool_calls:
+            logger.warning(
+                f"[EMPTY_RESPONSE] Model returned no content and no tool calls. "
+                f"raw_content_length={len(full_content)}, thinking_length={len(full_thinking_content)}, "
+                f"metering={metering_data}, context_usage={context_usage_percentage}%"
+            )
             no_reply_chunk = {
                 "id": completion_id,
                 "object": "chat.completion.chunk",
