@@ -145,6 +145,20 @@ async def messages(
     """
     logger.info(f"Request to /v1/messages (model={request_data.model}, stream={request_data.stream})")
     
+    # Detect and log duplicate patterns in assistant messages
+    from kiro.duplicate_detector import detect_and_log_duplicates
+    # Extract agent name from system prompt if available
+    agent_name = "unknown"
+    if request_data.system:
+        system_text = request_data.system if isinstance(request_data.system, str) else str(request_data.system)
+        import re
+        agent_match = re.search(r'You are ([A-Z]\w+)', system_text)
+        if agent_match:
+            agent_name = agent_match.group(1).lower()
+    # Convert messages to dicts for duplicate detection
+    messages_for_detection = [{"role": m.role, "content": m.content} for m in request_data.messages]
+    detect_and_log_duplicates(messages_for_detection, agent_name)
+    
     # Log all incoming headers for debugging
     logger.debug(f"[INCOMING HEADERS] {dict(request.headers)}")
     
