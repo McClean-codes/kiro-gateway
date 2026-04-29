@@ -118,6 +118,56 @@ async def health():
         "version": APP_VERSION
     }
 
+
+@router.get("/status")
+async def status(request: Request):
+    """
+    Operational status endpoint.
+    
+    Returns account health, available models, and system info.
+    No authentication required (read-only operational data).
+    
+    Returns:
+        Status, accounts, models, and version info
+    """
+    account_manager = request.app.state.account_manager
+    
+    # Collect account info
+    accounts = []
+    for account_id, account in account_manager._accounts.items():
+        account_info = {
+            "id": account_id,
+            "available": account.is_available() if hasattr(account, "is_available") else True,
+            "auth_type": account.auth_manager.auth_type.value if account.auth_manager else None,
+        }
+        # Get models if resolver exists
+        if account.model_resolver:
+            try:
+                account_info["models"] = account.model_resolver.get_available_models()
+            except Exception:
+                account_info["models"] = []
+        else:
+            account_info["models"] = []
+        accounts.append(account_info)
+    
+    # Get all available models
+    try:
+        all_models = account_manager.get_all_available_models()
+    except Exception:
+        all_models = []
+    
+    return {
+        "status": "ok",
+        "version": APP_VERSION,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "account_system": request.app.state.account_system,
+        "accounts": accounts,
+        "total_accounts": len(accounts),
+        "available_accounts": sum(1 for a in accounts if a["available"]),
+        "all_models": all_models,
+    }
+
+
 @router.get("/v1/models", response_model=ModelList, dependencies=[Depends(verify_api_key)])
 async def get_models(request: Request):
     """
