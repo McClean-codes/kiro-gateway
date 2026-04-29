@@ -27,12 +27,86 @@ and other common utilities.
 import hashlib
 import json
 import uuid
-from typing import TYPE_CHECKING, List, Dict, Any
+from typing import TYPE_CHECKING, List, Dict, Any, Union
 
 from loguru import logger
 
 if TYPE_CHECKING:
     from kiro.auth import KiroAuthManager
+
+
+def is_last_user_message_empty(messages: list) -> bool:
+    """
+    Check if the last user message in the conversation has empty content.
+    
+    Empty messages from Hermes (caused by retries, empty tool results, etc.)
+    get converted to "Continue" by converters_core, which causes the model to
+    resume old work or go on wild goose chases. This guard detects them early
+    so route handlers can short-circuit with NO_REPLY.
+    
+    Considers a message empty if:
+    - content is None, empty string, or whitespace-only
+    - content is "(empty)" placeholder
+    - content is a list of content blocks with no actual text or tool_result blocks
+    
+    Does NOT consider empty if:
+    - content contains tool_result blocks (those need processing)
+    - content contains image blocks
+    - content has any non-whitespace text
+    """
+    if not messages:
+        return False
+    
+    # Find the last user message
+    last_user = None
+    for msg in reversed(messages):
+        role = getattr(msg, 'role', None) or (msg.get('role') if isinstance(msg, dict) else None)
+        if role == 'user':
+            last_user = msg
+            break
+    
+    if last_user is None:
+        return False
+    
+    content = getattr(last_user, 'content', None)
+    if content is None:
+        content = last_user.get('content') if isinstance(last_user, dict) else None
+    
+    # None or empty
+    if content is None:
+        return True
+    
+    # String content
+    if isinstance(content, str):
+        stripped = content.strip()
+        return stripped == "" or stripped == "(empty)"
+    
+    # List of content blocks
+    if isinstance(content, list):
+        for block in content:
+            if isinstance(block, dict):
+                block_type = block.get("type", "")
+                # tool_result blocks are real content — not empty
+                if block_type == "tool_result":
+                    return False
+                # image blocks are real content
+                if block_type in ("image", "image_url"):
+                    return False
+                # text block with actual content
+                if block_type == "text" and block.get("text", "").strip() and block.get("text", "").strip() != "(empty)":
+                    return False
+            elif hasattr(block, 'type'):
+                # Pydantic model
+                if block.type == "tool_result":
+                    return False
+                if block.type in ("image", "image_url"):
+                    return False
+                if block.type == "text" and hasattr(block, 'text') and block.text.strip() and block.text.strip() != "(empty)":
+                    return False
+        # All blocks were empty text or unrecognized
+        return True
+    
+    return False
 
 
 def get_machine_fingerprint() -> str:

@@ -227,6 +227,32 @@ async def chat_completions(request: Request, request_data: ChatCompletionRequest
     """
     logger.info(f"Request to /v1/chat/completions (model={request_data.model}, stream={request_data.stream})")
     
+    # ── Empty message guard ──────────────────────────────────────────────
+    # Hermes sometimes sends empty user messages (retries, empty tool results).
+    # converters_core converts these to "Continue", causing the model to resume
+    # old work or hallucinate tasks. Short-circuit with NO_REPLY instead.
+    from kiro.utils import is_last_user_message_empty
+    if is_last_user_message_empty(request_data.messages):
+        logger.warning(f"[EMPTY_MESSAGE_GUARD] Last user message is empty — returning NO_REPLY without model call")
+        import uuid as _uuid
+        import time as _time
+        _comp_id = f"chatcmpl-{_uuid.uuid4().hex[:24]}"
+        _model = request_data.model or "unknown"
+        _created = int(_time.time())
+        if request_data.stream:
+            def _empty_stream():
+                yield f"data: {__import__('json').dumps({'id': _comp_id, 'object': 'chat.completion.chunk', 'created': _created, 'model': _model, 'choices': [{'index': 0, 'delta': {'role': 'assistant', 'content': ''}, 'finish_reason': None}]})}\n\n"
+                yield f"data: {__import__('json').dumps({'id': _comp_id, 'object': 'chat.completion.chunk', 'created': _created, 'model': _model, 'choices': [{'index': 0, 'delta': {'content': 'NO_REPLY'}, 'finish_reason': None}]})}\n\n"
+                yield f"data: {__import__('json').dumps({'id': _comp_id, 'object': 'chat.completion.chunk', 'created': _created, 'model': _model, 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}], 'usage': {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}})}\n\n"
+                yield "data: [DONE]\n\n"
+            return StreamingResponse(_empty_stream(), media_type="text/event-stream")
+        else:
+            return JSONResponse(content={
+                "id": _comp_id, "object": "chat.completion", "created": _created, "model": _model,
+                "choices": [{"index": 0, "message": {"role": "assistant", "content": "NO_REPLY"}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+            })
+    
     # Note: prepare_new_request() and log_request_body() are now called by DebugLoggerMiddleware
     # This ensures debug logging works even for requests that fail Pydantic validation (422 errors)
     

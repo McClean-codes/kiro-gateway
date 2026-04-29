@@ -145,6 +145,54 @@ async def messages(
     """
     logger.info(f"Request to /v1/messages (model={request_data.model}, stream={request_data.stream})")
     
+    # ── Empty message guard ──────────────────────────────────────────────
+    # Hermes sometimes sends empty user messages (retries, empty tool results).
+    # converters_core converts these to "Continue", causing the model to resume
+    # old work or hallucinate tasks. Short-circuit with NO_REPLY instead.
+    from kiro.utils import is_last_user_message_empty
+    if is_last_user_message_empty(request_data.messages):
+        logger.warning(f"[EMPTY_MESSAGE_GUARD] Last user message is empty — returning NO_REPLY without model call")
+        if request_data.stream:
+            import uuid as _uuid
+            import time as _time
+            from kiro.streaming_anthropic import format_sse_event
+            _msg_id = f"msg_{_uuid.uuid4().hex[:24]}"
+            _model = request_data.model or "unknown"
+            def _empty_stream():
+                yield format_sse_event("message_start", {
+                    "type": "message_start",
+                    "message": {"id": _msg_id, "type": "message", "role": "assistant",
+                                "content": [], "model": _model, "stop_reason": None,
+                                "stop_sequence": None, "usage": {"input_tokens": 0, "output_tokens": 0}}
+                })
+                yield format_sse_event("content_block_start", {
+                    "type": "content_block_start", "index": 0,
+                    "content_block": {"type": "text", "text": ""}
+                })
+                yield format_sse_event("content_block_delta", {
+                    "type": "content_block_delta", "index": 0,
+                    "delta": {"type": "text_delta", "text": "NO_REPLY"}
+                })
+                yield format_sse_event("content_block_stop", {
+                    "type": "content_block_stop", "index": 0
+                })
+                yield format_sse_event("message_delta", {
+                    "type": "message_delta",
+                    "delta": {"stop_reason": "end_turn", "stop_sequence": None},
+                    "usage": {"input_tokens": 0, "output_tokens": 0}
+                })
+                yield format_sse_event("message_stop", {"type": "message_stop"})
+            return StreamingResponse(_empty_stream(), media_type="text/event-stream")
+        else:
+            return JSONResponse(content={
+                "id": f"msg_{__import__('uuid').uuid4().hex[:24]}",
+                "type": "message", "role": "assistant",
+                "content": [{"type": "text", "text": "NO_REPLY"}],
+                "model": request_data.model or "unknown",
+                "stop_reason": "end_turn", "stop_sequence": None,
+                "usage": {"input_tokens": 0, "output_tokens": 0}
+            })
+    
     # Detect and log duplicate patterns in assistant messages
     from kiro.duplicate_detector import detect_and_log_duplicates
     # Extract agent name from system prompt if available
