@@ -76,10 +76,17 @@ def is_last_user_message_empty(messages: list) -> bool:
     if content is None:
         return True
     
+    # Strings that are functionally empty (no actionable user content)
+    EMPTY_PATTERNS = {
+        "",
+        "(empty)",
+        "(The user sent a message with no text content)",
+    }
+    
     # String content
     if isinstance(content, str):
         stripped = content.strip()
-        return stripped == "" or stripped == "(empty)"
+        return stripped in EMPTY_PATTERNS
     
     # List of content blocks
     if isinstance(content, list):
@@ -93,7 +100,7 @@ def is_last_user_message_empty(messages: list) -> bool:
                 if block_type in ("image", "image_url"):
                     return False
                 # text block with actual content
-                if block_type == "text" and block.get("text", "").strip() and block.get("text", "").strip() != "(empty)":
+                if block_type == "text" and block.get("text", "").strip() and block.get("text", "").strip() not in EMPTY_PATTERNS:
                     return False
             elif hasattr(block, 'type'):
                 # Pydantic model
@@ -101,7 +108,7 @@ def is_last_user_message_empty(messages: list) -> bool:
                     return False
                 if block.type in ("image", "image_url"):
                     return False
-                if block.type == "text" and hasattr(block, 'text') and block.text.strip() and block.text.strip() != "(empty)":
+                if block.type == "text" and hasattr(block, 'text') and block.text.strip() and block.text.strip() not in EMPTY_PATTERNS:
                     return False
         # All blocks were empty text or unrecognized
         return True
